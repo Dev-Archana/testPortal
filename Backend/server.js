@@ -1,65 +1,83 @@
 const express = require("express");
 const mysql = require("mysql");
 const cors = require("cors");
-const bodyParser = require("body-parser");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 const app = express();
 app.use(cors());
-app.use(bodyParser.json());
+app.use(express.json()); // ✅ Corrected request body parsing
 
-// ✅ Establish MySQL Connection
-const db = mysql.createConnection({
+// ✅ Improved MySQL Connection Handling
+const db = mysql.createPool({
     host: "localhost",
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
+    connectionLimit: 10,
 });
 
-db.connect((err) => {
+db.getConnection((err, connection) => {
     if (err) {
-        console.error("Database connection failed:", err);
+        console.error("❌ Database connection failed:", err.message);
     } else {
-        console.log("Connected to MySQL database");
+        console.log("✅ Connected to MySQL database");
+        connection.release();
     }
 });
 
-// ✅ Define Routes
-
+// ✅ Registration Endpoint - Corrected Field Names & Debugging
 app.post("/register", async (req, res) => {
-    const { usn, college, email, fullname, password } = req.body;
+    const { usn, college, email, fullname, createPassword, confirmPassword } = req.body;
 
-    if (!usn || !college || !email || !fullname || !password) {
+    console.log("📥 Received Registration Data:", req.body); // Debugging
+
+    if (!usn || !college || !email || !fullname || !createPassword || !confirmPassword) {
         return res.status(400).json({ error: "All fields are required" });
     }
 
-    // Hash password before storing
-    const hashedPassword = await bcrypt.hash(password, 10);
+    if (createPassword !== confirmPassword) {
+        return res.status(400).json({ error: "Passwords do not match" });
+    }
 
-    db.query(
-        "INSERT INTO users (usn, college, email, fullname, password) VALUES (?, ?, ?, ?, ?)",
-        [usn, college, email, fullname, hashedPassword],
-        (err, result) => {
-            if (err) {
-                console.error("Error inserting user:", err);
-                return res.status(500).json({ error: "Registration failed" });
+    try {
+        const hashedPassword = await bcrypt.hash(createPassword, 10);
+
+        db.query(
+            "INSERT INTO users (usn, college, email, fullname, password) VALUES (?, ?, ?, ?, ?)",
+            [usn, college, email, fullname, hashedPassword],
+            (err, result) => {
+                if (err) {
+                    console.error("❌ Error inserting user:", err);
+                    return res.status(500).json({ error: "Registration failed" });
+                }
+                res.status(201).json({ message: "✅ Registration successful" });
             }
-            res.status(201).json({ message: "Registration successful" });
-        }
-    );
+        );
+    } catch (error) {
+        console.error("❌ Error:", error);
+        res.status(500).json({ error: "Internal Server Error" });
+    }
 });
 
+// ✅ Login Endpoint - Improved Error Handling
 app.post("/login", async (req, res) => {
     const { usn, password } = req.body;
+
+    console.log("📥 Received Login Data:", req.body); // Debugging
 
     if (!usn || !password) {
         return res.status(400).json({ error: "USN and password required" });
     }
 
     db.query("SELECT * FROM users WHERE usn = ?", [usn], async (err, result) => {
-        if (err || result.length === 0) {
+        if (err) {
+            console.error("❌ Database error:", err);
+            return res.status(500).json({ error: "Internal Server Error" });
+        }
+
+        if (result.length === 0) {
             return res.status(404).json({ error: "User not found" });
         }
 
@@ -71,13 +89,13 @@ app.post("/login", async (req, res) => {
         }
 
         const token = jwt.sign({ usn: user.usn }, process.env.JWT_SECRET, { expiresIn: "1h" });
-        res.json({ message: "Login successful", token });
+        res.json({ message: "✅ Login successful", token });
     });
 });
 
 // ✅ Start Server
 const server = app.listen(5000, () => {
-    console.log("Server running on port 5000");
+    console.log("🚀 Server running on port 5000");
 });
 
 // ✅ Export for Testing
