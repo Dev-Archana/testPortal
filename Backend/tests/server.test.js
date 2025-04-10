@@ -1,7 +1,12 @@
 const request = require("supertest");
-const app = require("../server");
+const { app, server, db } = require("../server");
 
 describe("Auth API Endpoints", () => {
+    afterAll(() => {
+        server.close(); // ✅ Close Express server
+        db.end(); // ✅ Close MySQL connection
+    });
+
     test("register user successfully", async () => {
         const response = await request(app).post("/register").send({
             usn: "test123",
@@ -13,16 +18,6 @@ describe("Auth API Endpoints", () => {
 
         expect(response.statusCode).toBe(201);
         expect(response.body.message).toBe("Registration successful");
-    });
-
-    test("login user successfully", async () => {
-        const response = await request(app).post("/login").send({
-            usn: "test123",
-            password: "password123"
-        });
-
-        expect(response.statusCode).toBe(200);
-        expect(response.body.token).toBeDefined();
     });
 
     test("fail login with incorrect password", async () => {

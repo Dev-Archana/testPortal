@@ -10,12 +10,12 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// MySQL Connection
+// ✅ Establish MySQL Connection
 const db = mysql.createConnection({
     host: "localhost",
-    user: "root", // Change as per your DB
-    password: "admin", // Change as per your DB
-    database: "mydatabase",
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
 });
 
 db.connect((err) => {
@@ -26,49 +26,59 @@ db.connect((err) => {
     }
 });
 
-// **Register User**
-app.post("/register", async (req, res) => {
-    const { usn, college, email, fullname, createPassword } = req.body;
+// ✅ Define Routes
 
-    if (!createPassword) {
-        return res.status(400).json({ error: "Password is required" });
+app.post("/register", async (req, res) => {
+    const { usn, college, email, fullname, password } = req.body;
+
+    if (!usn || !college || !email || !fullname || !password) {
+        return res.status(400).json({ error: "All fields are required" });
     }
 
-    const hashedPassword = await bcrypt.hash(createPassword, 10);
+    // Hash password before storing
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    const query = "INSERT INTO users (usn, college, email, fullname, password) VALUES (?, ?, ?, ?, ?)";
-    db.query(query, [usn, college, email, fullname, hashedPassword], (err, result) => {
-        if (err) {
-            res.status(500).json({ error: "Error inserting user" });
-        } else {
+    db.query(
+        "INSERT INTO users (usn, college, email, fullname, password) VALUES (?, ?, ?, ?, ?)",
+        [usn, college, email, fullname, hashedPassword],
+        (err, result) => {
+            if (err) {
+                console.error("Error inserting user:", err);
+                return res.status(500).json({ error: "Registration failed" });
+            }
             res.status(201).json({ message: "Registration successful" });
         }
-    });
+    );
 });
 
-// **Login User**
 app.post("/login", async (req, res) => {
     const { usn, password } = req.body;
 
+    if (!usn || !password) {
+        return res.status(400).json({ error: "USN and password required" });
+    }
+
     db.query("SELECT * FROM users WHERE usn = ?", [usn], async (err, result) => {
         if (err || result.length === 0) {
-            res.status(401).json({ error: "User not found" });
-        } else {
-            const user = result[0];
-            const validPassword = await bcrypt.compare(password, user.password);
-
-            if (!validPassword) {
-                res.status(401).json({ error: "Invalid password" });
-            } else {
-                const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: "1h" });
-                res.status(200).json({ message: "Login successful", token });
-            }
+            return res.status(404).json({ error: "User not found" });
         }
+
+        const user = result[0];
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ error: "Invalid password" });
+        }
+
+        const token = jwt.sign({ usn: user.usn }, process.env.JWT_SECRET, { expiresIn: "1h" });
+        res.json({ message: "Login successful", token });
     });
 });
 
-// **Start Server**
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+// ✅ Start Server
+const server = app.listen(5000, () => {
+    console.log("Server running on port 5000");
 });
+
+// ✅ Export for Testing
+module.exports = { app, server, db };

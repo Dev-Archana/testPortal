@@ -1,8 +1,19 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import AuthPage from "../components/AuthPage";
+import AuthPage from "../components/registration/Registration";
 import { BrowserRouter } from "react-router-dom";
 
 describe("AuthPage Component", () => {
+    beforeEach(() => {
+        jest.spyOn(window, "alert").mockImplementation(() => { });
+        localStorage.clear();
+        global.fetch = jest.fn(() =>
+            Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({ token: "mockToken123" }),
+            })
+        );
+    });
+
     test("renders login and register tabs", () => {
         render(
             <BrowserRouter>
@@ -24,7 +35,7 @@ describe("AuthPage Component", () => {
         fireEvent.change(screen.getByLabelText("Create Password"), { target: { value: "test123" } });
         fireEvent.change(screen.getByLabelText("Confirm Password"), { target: { value: "test456" } });
 
-        fireEvent.click(screen.getByText("Register"));
+        fireEvent.submit(screen.getByRole("form"));
 
         expect(window.alert).toHaveBeenCalledWith("Passwords do not match!");
     });
@@ -39,8 +50,8 @@ describe("AuthPage Component", () => {
         fireEvent.change(screen.getByLabelText("USN"), { target: { value: "testuser" } });
         fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password123" } });
 
-        fireEvent.click(screen.getByText("Login"));
+        await fireEvent.submit(screen.getByRole("form"));
 
-        expect(localStorage.getItem("token")).not.toBeNull();
+        expect(localStorage.getItem("token")).toBe("mockToken123");
     });
 });
